@@ -1,0 +1,59 @@
+services:
+  mqtt-broker:
+    image: eclipse-mosquitto:2.0.20
+    container_name: mqtt-broker
+    ports:
+      - "1883:1883"   
+      - "8883:8883"   
+    volumes:
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - ./mosquitto/config/mosquitto.passwd:/mosquitto/config/mosquitto.passwd
+      - ./mosquitto/config/mosquitto.acl:/mosquitto/config/mosquitto.acl
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+      - ./mosquitto/certs:/mosquitto/certs
+    restart: unless-stopped
+    networks:
+      - mqtt_network
+
+  temperature-sensor-1:
+    build:
+      context: .
+      dockerfile: Dockerfile.temperature-sensor-1
+    container_name: temperature-sensor-1
+    depends_on:
+      - mqtt-broker
+    environment:
+      BROKER_HOST: mqtt-broker
+      BROKER_PORT: "1883"
+      BROKER_TLS: "false"
+      TOPIC: sensor/temperature
+      INTERVAL_SECONDS: "5"
+      QOS: "0"
+      RETAIN: "false"
+    restart: unless-stopped
+    networks:
+      - mqtt_network
+
+  mqtt-subscriber:
+    image: eclipse-mosquitto:2.0.20
+    container_name: mqtt-subscriber
+    depends_on:
+      - mqtt-broker
+    environment:
+      BROKER_PORT: "8883"
+      BROKER_TLS: "true"
+      BROKER_USERNAME: "marioti"   
+      BROKER_PASSWORD: "marioti123"
+    command: >
+      sh -c "mosquitto_sub -h mqtt-broker -p 8883 --cafile /mosquitto/certs/ca.crt -t sensor/# -v --tls-version tlsv1.2 -u liss -P liss123"
+    volumes:
+      - ./mosquitto/certs:/mosquitto/certs
+    networks:
+      - mqtt_network
+    restart: unless-stopped
+
+networks:
+  mqtt_network:
+    name: mqtt_network
+    driver: bridge
